@@ -1,6 +1,10 @@
 "use strict";
 
-module.exports = function (sequelize, DataTypes) {
+// Import Sequelize and DataTypes
+const { DataTypes } = require("sequelize");
+
+module.exports = function (sequelize) {
+    // Define the User model
     var User = sequelize.define("User", {
         id: {
             type: DataTypes.INTEGER,
@@ -29,5 +33,6 @@ module.exports = function (sequelize, DataTypes) {
             allowNull: true
         }
     });
+
     return User;
 };

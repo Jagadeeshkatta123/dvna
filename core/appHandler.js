@@ -1,248 +1,205 @@
-var db = require('../models')
-var bCrypt = require('bcrypt')
+const mysql = require('mysql');
+const bCrypt = require('bcrypt');
 const exec = require('child_process').exec;
-var mathjs = require('mathjs')
-var libxmljs = require("libxmljs");
-var serialize = require("node-serialize")
-const Op = db.Sequelize.Op
+const mathjs = require('mathjs');
+const libxmljs = require("libxmljs");
+const serialize = require("node-serialize");
+const { Sequelize } = require('sequelize');
+const Op = Sequelize.Op;
 
-module.exports.userSearch = function (req, res) {
-	var query = "SELECT name,id FROM Users WHERE login='" + req.body.login + "'";
-	db.sequelize.query(query, {
-		model: db.User
-	}).then(user => {
-		if (user.length) {
-			var output = {
-				user: {
-					name: user[0].name,
-					id: user[0].id
-				}
-			}
-			res.render('app/usersearch', {
-				output: output
-			})
-		} else {
-			req.flash('warning', 'User not found')
-			res.render('app/usersearch', {
-				output: null
-			})
-		}
-	}).catch(err => {
-		req.flash('danger', 'Internal Error')
-		res.render('app/usersearch', {
-			output: null
-		})
-	})
-}
+// Setup MySQL connection for the serverless function
+const connection = mysql.createConnection({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME
+});
 
-module.exports.ping = function (req, res) {
-	exec('ping -c 2 ' + req.body.address, function (err, stdout, stderr) {
-		output = stdout + stderr
-		res.render('app/ping', {
-			output: output
-		})
-	})
-}
+// Netlify Function Handlers
 
-module.exports.listProducts = function (req, res) {
-	db.Product.findAll().then(products => {
-		output = {
-			products: products
-		}
-		res.render('app/products', {
-			output: output
-		})
-	})
-}
+// User Search
+exports.handler = async (event, context) => {
+  const body = JSON.parse(event.body);
+  const query = "SELECT name,id FROM Users WHERE login='" + body.login + "'";
+  
+  return new Promise((resolve, reject) => {
+    connection.query(query, (error, results) => {
+      if (error) {
+        resolve({
+          statusCode: 500,
+          body: JSON.stringify({ message: "Internal Error" })
+        });
+      } else if (results.length) {
+        resolve({
+          statusCode: 200,
+          body: JSON.stringify({
+            user: {
+              name: results[0].name,
+              id: results[0].id
+            }
+          })
+        });
+      } else {
+        resolve({
+          statusCode: 404,
+          body: JSON.stringify({ message: "User not found" })
+        });
+      }
+    });
+  });
+};
 
-module.exports.productSearch = function (req, res) {
-	db.Product.findAll({
-		where: {
-			name: {
-				[Op.like]: '%' + req.body.name + '%'
-			}
-		}
-	}).then(products => {
-		output = {
-			products: products,
-			searchTerm: req.body.name
-		}
-		res.render('app/products', {
-			output: output
-		})
-	})
-}
+// Ping Function
+exports.ping = async (event, context) => {
+  const body = JSON.parse(event.body);
+  return new Promise((resolve, reject) => {
+    exec('ping -c 2 ' + body.address, (err, stdout, stderr) => {
+      const output = stdout + stderr;
+      resolve({
+        statusCode: 200,
+        body: JSON.stringify({ output })
+      });
+    });
+  });
+};
 
-module.exports.modifyProduct = function (req, res) {
-	if (!req.query.id || req.query.id == '') {
-		output = {
-			product: {}
-		}
-		res.render('app/modifyproduct', {
-			output: output
-		})
-	} else {
-		db.Product.find({
-			where: {
-				'id': req.query.id
-			}
-		}).then(product => {
-			if (!product) {
-				product = {}
-			}
-			output = {
-				product: product
-			}
-			res.render('app/modifyproduct', {
-				output: output
-			})
-		})
-	}
-}
+// List Products
+exports.listProducts = async (event, context) => {
+  return new Promise((resolve, reject) => {
+    connection.query("SELECT * FROM Products", (error, results) => {
+      if (error) {
+        resolve({
+          statusCode: 500,
+          body: JSON.stringify({ message: "Internal Error" })
+        });
+      } else {
+        resolve({
+          statusCode: 200,
+          body: JSON.stringify({ products: results })
+        });
+      }
+    });
+  });
+};
 
-module.exports.modifyProductSubmit = function (req, res) {
-	if (!req.body.id || req.body.id == '') {
-		req.body.id = 0
-	}
-	db.Product.find({
-		where: {
-			'id': req.body.id
-		}
-	}).then(product => {
-		if (!product) {
-			product = new db.Product()
-		}
-		product.code = req.body.code
-		product.name = req.body.name
-		product.description = req.body.description
-		product.tags = req.body.tags
-		product.save().then(p => {
-			if (p) {
-				req.flash('success', 'Product added/modified!')
-				res.redirect('/app/products')
-			}
-		}).catch(err => {
-			output = {
-				product: product
-			}
-			req.flash('danger',err)
-			res.render('app/modifyproduct', {
-				output: output
-			})
-		})
-	})
-}
+// Product Search
+exports.productSearch = async (event, context) => {
+  const body = JSON.parse(event.body);
+  return new Promise((resolve, reject) => {
+    connection.query(
+      "SELECT * FROM Products WHERE name LIKE ?",
+      ['%' + body.name + '%'],
+      (error, results) => {
+        if (error) {
+          resolve({
+            statusCode: 500,
+            body: JSON.stringify({ message: "Internal Error" })
+          });
+        } else {
+          resolve({
+            statusCode: 200,
+            body: JSON.stringify({ products: results, searchTerm: body.name })
+          });
+        }
+      }
+    );
+  });
+};
 
-module.exports.userEdit = function (req, res) {
-	res.render('app/useredit', {
-		userId: req.user.id,
-		userEmail: req.user.email,
-		userName: req.user.name
-	})
-}
+// Modify Product
+exports.modifyProductSubmit = async (event, context) => {
+  const body = JSON.parse(event.body);
+  const productId = body.id || 0;
 
-module.exports.userEditSubmit = function (req, res) {
-	db.User.find({
-		where: {
-			'id': req.body.id
-		}		
-	}).then(user =>{
-		if(req.body.password.length>0){
-			if(req.body.password.length>0){
-				if (req.body.password == req.body.cpassword) {
-					user.password = bCrypt.hashSync(req.body.password, bCrypt.genSaltSync(10), null)
-				}else{
-					req.flash('warning', 'Passwords dont match')
-					res.render('app/useredit', {
-						userId: req.user.id,
-						userEmail: req.user.email,
-						userName: req.user.name,
-					})
-					return		
-				}
-			}else{
-				req.flash('warning', 'Invalid Password')
-				res.render('app/useredit', {
-					userId: req.user.id,
-					userEmail: req.user.email,
-					userName: req.user.name,
-				})
-				return
-			}
-		}
-		user.email = req.body.email
-		user.name = req.body.name
-		user.save().then(function () {
-			req.flash('success',"Updated successfully")
-			res.render('app/useredit', {
-				userId: req.body.id,
-				userEmail: req.body.email,
-				userName: req.body.name,
-			})
-		})
-	})
-}
+  return new Promise((resolve, reject) => {
+    connection.query(
+      "SELECT * FROM Products WHERE id = ?",
+      [productId],
+      (error, results) => {
+        if (error) {
+          resolve({
+            statusCode: 500,
+            body: JSON.stringify({ message: "Internal Error" })
+          });
+        } else {
+          let product = results.length ? results[0] : {};
 
-module.exports.redirect = function (req, res) {
-	if (req.query.url) {
-		res.redirect(req.query.url)
-	} else {
-		res.send('invalid redirect url')
-	}
-}
+          // Update product fields
+          product.code = body.code;
+          product.name = body.name;
+          product.description = body.description;
+          product.tags = body.tags;
 
-module.exports.calc = function (req, res) {
-	if (req.body.eqn) {
-		res.render('app/calc', {
-			output: mathjs.eval(req.body.eqn)
-		})
-	} else {
-		res.render('app/calc', {
-			output: 'Enter a valid math string like (3+3)*2'
-		})
-	}
-}
+          connection.query(
+            "UPDATE Products SET ? WHERE id = ?",
+            [product, productId],
+            (err) => {
+              if (err) {
+                resolve({
+                  statusCode: 500,
+                  body: JSON.stringify({ message: "Error modifying product" })
+                });
+              } else {
+                resolve({
+                  statusCode: 200,
+                  body: JSON.stringify({ message: "Product modified successfully" })
+                });
+              }
+            }
+          );
+        }
+      }
+    );
+  });
+};
 
-module.exports.listUsersAPI = function (req, res) {
-	db.User.findAll({}).then(users => {
-		res.status(200).json({
-			success: true,
-			users: users
-		})
-	})
-}
+// User Edit
+exports.userEditSubmit = async (event, context) => {
+  const body = JSON.parse(event.body);
 
-module.exports.bulkProductsLegacy = function (req,res){
-	// TODO: Deprecate this soon
-	if(req.files.products){
-		var products = serialize.unserialize(req.files.products.data.toString('utf8'))
-		products.forEach( function (product) {
-			var newProduct = new db.Product()
-			newProduct.name = product.name
-			newProduct.code = product.code
-			newProduct.tags = product.tags
-			newProduct.description = product.description
-			newProduct.save()
-		})
-		res.redirect('/app/products')
-	}else{
-		res.render('app/bulkproducts',{messages:{danger:'Invalid file'},legacy:true})
-	}
-}
+  return new Promise((resolve, reject) => {
+    connection.query(
+      "SELECT * FROM Users WHERE id = ?",
+      [body.id],
+      (error, results) => {
+        if (error) {
+          resolve({
+            statusCode: 500,
+            body: JSON.stringify({ message: "Internal Error" })
+          });
+        } else {
+          const user = results[0];
+          if (body.password.length > 0 && body.password === body.cpassword) {
+            user.password = bCrypt.hashSync(body.password, bCrypt.genSaltSync(10), null);
+          } else {
+            resolve({
+              statusCode: 400,
+              body: JSON.stringify({ message: "Passwords don't match or invalid" })
+            });
+            return;
+          }
+          user.email = body.email;
+          user.name = body.name;
 
-module.exports.bulkProducts =  function(req, res) {
-	if (req.files.products && req.files.products.mimetype=='text/xml'){
-		var products = libxmljs.parseXmlString(req.files.products.data.toString('utf8'), {noent:true,noblanks:true})
-		products.root().childNodes().forEach( product => {
-			var newProduct = new db.Product()
-			newProduct.name = product.childNodes()[0].text()
-			newProduct.code = product.childNodes()[1].text()
-			newProduct.tags = product.childNodes()[2].text()
-			newProduct.description = product.childNodes()[3].text()
-			newProduct.save()
-		})
-		res.redirect('/app/products')
-	}else{
-		res.render('app/bulkproducts',{messages:{danger:'Invalid file'},legacy:false})
-	}
-}
+          connection.query(
+            "UPDATE Users SET ? WHERE id = ?",
+            [user, body.id],
+            (err) => {
+              if (err) {
+                resolve({
+                  statusCode: 500,
+                  body: JSON.stringify({ message: "Error updating user" })
+                });
+              } else {
+                resolve({
+                  statusCode: 200,
+                  body: JSON.stringify({ message: "User updated successfully" })
+                });
+              }
+            }
+          );
+        }
+      }
+    );
+  });
+};

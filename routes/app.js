@@ -1,67 +1,114 @@
-var router = require('express').Router()
-var appHandler = require('../core/appHandler')
-var authHandler = require('../core/authHandler')
+const appHandler = require('../core/appHandler');
+const authHandler = require('../core/authHandler');
 
-module.exports = function () {
-    router.get('/', authHandler.isAuthenticated, function (req, res) {
-        res.redirect('/learn')
-    })
+exports.handler = async function(event, context) {
+    // Authenticate user first
+    const isAuthenticated = await authHandler.isAuthenticated(event, context);
 
-    router.get('/usersearch', authHandler.isAuthenticated, function (req, res) {
-        res.render('app/usersearch', {
-            output: null
-        })
-    })
+    if (!isAuthenticated) {
+        return {
+            statusCode: 401,
+            body: JSON.stringify({ message: 'Unauthorized' })
+        };
+    }
 
-    router.get('/ping', authHandler.isAuthenticated, function (req, res) {
-        res.render('app/ping', {
-            output: null
-        })
-    })
+    // Routing logic based on the request path
+    const { httpMethod, path } = event;
 
-    router.get('/bulkproducts', authHandler.isAuthenticated, function (req, res) {
-        res.render('app/bulkproducts',{legacy:req.query.legacy})
-    })
+    switch (path) {
+        case '/':
+            return {
+                statusCode: 302,
+                headers: {
+                    Location: '/learn'
+                }
+            };
+        
+        case '/usersearch':
+            if (httpMethod === 'GET') {
+                return {
+                    statusCode: 200,
+                    body: JSON.stringify({ output: null }) // Replace with rendered view logic if needed
+                };
+            } else if (httpMethod === 'POST') {
+                return await appHandler.userSearch(event, context);
+            }
+            break;
 
-    router.get('/products', authHandler.isAuthenticated, appHandler.listProducts)
+        case '/ping':
+            if (httpMethod === 'GET') {
+                return {
+                    statusCode: 200,
+                    body: JSON.stringify({ output: null }) // Replace with rendered view logic if needed
+                };
+            } else if (httpMethod === 'POST') {
+                return await appHandler.ping(event, context);
+            }
+            break;
 
-    router.get('/modifyproduct', authHandler.isAuthenticated, appHandler.modifyProduct)
+        case '/bulkproducts':
+            if (httpMethod === 'GET') {
+                return {
+                    statusCode: 200,
+                    body: JSON.stringify({ legacy: event.queryStringParameters.legacy }) // Replace with rendered view logic if needed
+                };
+            } else if (httpMethod === 'POST') {
+                return await appHandler.bulkProducts(event, context);
+            }
+            break;
 
-    router.get('/useredit', authHandler.isAuthenticated, appHandler.userEdit)
+        case '/products':
+            return await appHandler.listProducts(event, context);
 
-    router.get('/calc', authHandler.isAuthenticated, function (req, res) {
-        res.render('app/calc',{output:null})
-    })
+        case '/modifyproduct':
+            if (httpMethod === 'GET') {
+                return await appHandler.modifyProduct(event, context);
+            } else if (httpMethod === 'POST') {
+                return await appHandler.modifyProductSubmit(event, context);
+            }
+            break;
 
-    router.get('/admin', authHandler.isAuthenticated, function (req, res) {
-        res.render('app/admin', {
-            admin: (req.user.role == 'admin')
-        })
-    })
+        case '/useredit':
+            if (httpMethod === 'GET') {
+                return await appHandler.userEdit(event, context);
+            } else if (httpMethod === 'POST') {
+                return await appHandler.userEditSubmit(event, context);
+            }
+            break;
 
-    router.get('/admin/usersapi', authHandler.isAuthenticated, appHandler.listUsersAPI)
+        case '/calc':
+            if (httpMethod === 'GET') {
+                return {
+                    statusCode: 200,
+                    body: JSON.stringify({ output: null }) // Replace with rendered view logic if needed
+                };
+            } else if (httpMethod === 'POST') {
+                return await appHandler.calc(event, context);
+            }
+            break;
 
-    router.get('/admin/users', authHandler.isAuthenticated, function(req, res){
-        res.render('app/adminusers')
-    })
+        case '/admin':
+            return {
+                statusCode: 200,
+                body: JSON.stringify({ admin: (context.user.role === 'admin') }) // Replace with rendered view logic if needed
+            };
 
-    router.get('/redirect', appHandler.redirect)
+        case '/admin/usersapi':
+            return await appHandler.listUsersAPI(event, context);
 
-    router.post('/usersearch', authHandler.isAuthenticated, appHandler.userSearch)
+        case '/admin/users':
+            return {
+                statusCode: 200,
+                body: JSON.stringify({}) // Replace with rendered view logic if needed
+            };
 
-    router.post('/ping', authHandler.isAuthenticated, appHandler.ping)
+        case '/redirect':
+            return await appHandler.redirect(event, context);
 
-    router.post('/products', authHandler.isAuthenticated, appHandler.productSearch)
-
-    router.post('/modifyproduct', authHandler.isAuthenticated, appHandler.modifyProductSubmit)
-
-    router.post('/useredit', authHandler.isAuthenticated, appHandler.userEditSubmit)
-
-    router.post('/calc', authHandler.isAuthenticated, appHandler.calc)
-
-    router.post('/bulkproducts',authHandler.isAuthenticated, appHandler.bulkProducts);
-
-    router.post('/bulkproductslegacy',authHandler.isAuthenticated, appHandler.bulkProductsLegacy);
-
-    return router
-}
+        default:
+            return {
+                statusCode: 404,
+                body: JSON.stringify({ message: 'Not Found' })
+            };
+    }
+};

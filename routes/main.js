@@ -1,68 +1,124 @@
-var router = require('express').Router()
-var vulnDict = require('../config/vulns')
-var authHandler = require('../core/authHandler')
+const vulnDict = require('../config/vulns'); // Adjust the path if needed
+const authHandler = require('../core/authHandler'); // Adjust the path if needed
 
-module.exports = function (passport) {
-	router.get('/', authHandler.isAuthenticated, function (req, res) {
-		res.redirect('/learn')
-	})
+// Export a function to handle HTTP requests
+exports.handler = async (event, context) => {
+  const { httpMethod, path, body } = event;
 
-	router.get('/login', authHandler.isNotAuthenticated, function (req, res) {
-		res.render('login')
-	})
+  // Helper function to render views (you'll need to implement this)
+  const renderView = (viewName, data) => {
+    // Render logic using your templating engine or alternative
+    // For now, we return a placeholder response
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ view: viewName, data })
+    };
+  };
 
-	router.get('/learn/vulnerability/:vuln', authHandler.isAuthenticated, function (req, res) {
-		res.render('vulnerabilities/layout', {
-			vuln: req.params.vuln,
-			vuln_title: vulnDict[req.params.vuln],
-			vuln_scenario: req.params.vuln + '/scenario',
-			vuln_description: req.params.vuln + '/description',
-			vuln_reference: req.params.vuln + '/reference',
-			vulnerabilities:vulnDict
-		}, function (err, html) {
-			if (err) {
-				console.log(err)
-				res.status(404).send('404')
-			} else {
-				res.send(html)
-			}
-		})
-	})
+  // Handle different routes based on the request path
+  switch (path) {
+    case '/':
+      // Implement your authentication check here
+      if (authHandler.isAuthenticated(context)) {
+        return {
+          statusCode: 302,
+          headers: {
+            Location: '/learn'
+          }
+        };
+      }
+      break;
 
-	router.get('/learn', authHandler.isAuthenticated, function (req, res) {
-		res.render('learn',{vulnerabilities:vulnDict})
-	})
+    case '/login':
+      if (!authHandler.isAuthenticated(context)) {
+        return renderView('login', {});
+      }
+      break;
 
-	router.get('/register', authHandler.isNotAuthenticated, function (req, res) {
-		res.render('register')
-	})
+    case '/learn/vulnerability':
+      const vulnParam = body.vuln; // Assuming this is sent as part of the request body
+      if (authHandler.isAuthenticated(context)) {
+        return renderView('vulnerabilities/layout', {
+          vuln: vulnParam,
+          vuln_title: vulnDict[vulnParam],
+          vuln_scenario: `${vulnParam}/scenario`,
+          vuln_description: `${vulnParam}/description`,
+          vuln_reference: `${vulnParam}/reference`,
+          vulnerabilities: vulnDict
+        });
+      }
+      break;
 
-	router.get('/logout', function (req, res) {
-		req.logout();
-		res.redirect('/');
-	})
+    case '/learn':
+      if (authHandler.isAuthenticated(context)) {
+        return renderView('learn', { vulnerabilities: vulnDict });
+      }
+      break;
 
-	router.get('/forgotpw', function (req, res) {
-		res.render('forgotpw')
-	})
+    case '/register':
+      if (!authHandler.isAuthenticated(context)) {
+        return renderView('register', {});
+      }
+      break;
 
-	router.get('/resetpw', authHandler.resetPw)
+    case '/logout':
+      // Implement logout logic here
+      authHandler.logout(context);
+      return {
+        statusCode: 302,
+        headers: {
+          Location: '/'
+        }
+      };
 
-	router.post('/login', passport.authenticate('login', {
-		successRedirect: '/learn',
-		failureRedirect: '/login',
-		failureFlash: true
-	}))
+    case '/forgotpw':
+      return renderView('forgotpw', {});
 
-	router.post('/register', passport.authenticate('signup', {
-		successRedirect: '/learn',
-		failureRedirect: '/register',
-		failureFlash: true
-	}))
+    case '/resetpw':
+      // Handle reset password logic
+      return authHandler.resetPw(context);
 
-	router.post('/forgotpw', authHandler.forgotPw)
+    case '/login':
+      if (httpMethod === 'POST') {
+        return passport.authenticate('login', {
+          successRedirect: '/learn',
+          failureRedirect: '/login',
+          failureFlash: true
+        })(context); // Implement this based on your logic
+      }
+      break;
 
-	router.post('/resetpw', authHandler.resetPwSubmit)
+    case '/register':
+      if (httpMethod === 'POST') {
+        return passport.authenticate('signup', {
+          successRedirect: '/learn',
+          failureRedirect: '/register',
+          failureFlash: true
+        })(context); // Implement this based on your logic
+      }
+      break;
 
-	return router
-}
+    case '/forgotpw':
+      if (httpMethod === 'POST') {
+        return authHandler.forgotPw(context);
+      }
+      break;
+
+    case '/resetpw':
+      if (httpMethod === 'POST') {
+        return authHandler.resetPwSubmit(context);
+      }
+      break;
+
+    default:
+      return {
+        statusCode: 404,
+        body: JSON.stringify({ message: 'Not Found' })
+      };
+  }
+
+  return {
+    statusCode: 405,
+    body: JSON.stringify({ message: 'Method Not Allowed' })
+  };
+};
