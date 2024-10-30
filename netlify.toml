@@ -1,0 +1,6 @@
+[build]
+  command = "npm install && npm run build" # Installs dependencies and builds
+  publish = "public"                       # Directory for static assets (adjust if needed)
+
+[functions]
+  directory = "functions"                  # Directory for serverless functions
